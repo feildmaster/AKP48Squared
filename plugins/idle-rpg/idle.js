@@ -38,10 +38,20 @@ function interval(func, wait, times, _this) {
   setTimeout(inner, wait);
 }
 
+function values(O) {
+  var vals = [];
+  Object.keys(O).forEach(function (key) {
+    var val = O[key];
+    if (val) vals.push[val];
+  });
+  return vals;
+}
+
 // Logging methods
 var debug = function (message) {_log("debug", message);},
   error = function (message) {_log("error", message);},
   info = function (message) {_log("info", message);},
+  silly = function (message) {_log("silly", message);},
   _log = function (level, message) {GLOBAL.logger[level](`IdleRPG: ${message}`);};
 
 // *** Constant values
@@ -317,7 +327,7 @@ IdleRPG.prototype.processContext = function(context) {
   var send = this._sendMessage;
   // Replies to sender if PM, channel if not
   context.reply = function (message, target) {
-    target = target || this.isPM ? context.nick : context.to; // If no target is specified, target the user
+    target = target || this.isPM ? context.nick : context.to; // If no target is specified, target the default
     send(this.instance, target, message);
   };
   
@@ -428,25 +438,18 @@ IdleRPG.prototype.save = function(callback) {
   debug("Saving config");
   this.saveConfig();
   debug(`Saving ${Object.keys(channels).length} channels`);
-  // saveChannels.then(savePlayers.then(callback(error);));
-  DB.saveChannels(channels);
-  var $players = Object.keys(players);
-  var finishedWithoutError = true;
+  return Promise.all([DB.saveChannels(channels), this.savePlayers()]).then(callback);
+};
+
+IdleRPG.prototype.savePlayers = function(callback) {
+  var $players = values(players);
   debug(`Saving ${$players.length} players`);
-  /*(function saveNextPlayer() {
-    if ($players) {
-      var player = players[$players.shift()];
-      if (!player) return saveNextPlayer(); // Don't have a player object? Go to next player
-      DB.savePlayer(player, function (data) {
-        if (data.error) {
-          error(data.error);
-          finishedWithoutError = false;
-        }
-        saveNextPlayer();
-      });
-    } else callback(finishedWithoutError);
-  })();*/
-  callback(true);
+  var promises = [];
+  $players.forEach(player => promises.push(new Promise(function (resolve, reject) {
+    silly(`Saving {player.name}`);
+    DB.savePlayer(player, resolve);
+  })));
+  return Promise.all(promises).then(callback);
 };
 
 IdleRPG.prototype.saveConfig = function() {
@@ -460,7 +463,7 @@ IdleRPG.prototype.getTopPlayers = function(count, callback) {
   }
   if (typeof callback !== "function") return;
   // Save current player data
-  this.save(function (saved) {
+  this.savePlayers(function (saved) {
     // After saving get the top players
     DB.getTopPlayers(count, function (data) {
       if (data.error) return error(data.error);
@@ -468,12 +471,16 @@ IdleRPG.prototype.getTopPlayers = function(count, callback) {
       callback(makePlayersFromData(data.rows));
     });
   });
-  
 };
 
 function makePlayersFromData(data) {
   var arr = [];
   // Create users, what happens with these users is up to the caller
+  data.forEach(function (raw) {
+    var player = IdlePlayer.createPlayer(raw);
+    // Future proof my sillyness
+    if (player) arr.push(player);
+  });
   return arr;
 }
 

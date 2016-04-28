@@ -1,4 +1,3 @@
-GLOBAL.logger.debug("Loading simple-seconds.js");
 function days(d) {
   return hours(24) * d;
 }
