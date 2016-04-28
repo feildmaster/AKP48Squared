@@ -290,7 +290,7 @@ IdleRPG.prototype.unload = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
     self.save(function (saved) {
-      if(saved === true) {
+      if(true) { // For now, always save
         resolve(true);
       } else {
         reject(`Database Error: ${saved}`);
@@ -429,6 +429,7 @@ IdleRPG.prototype.save = function(callback) {
   debug("Saving config");
   this.saveConfig();
   debug(`Saving ${Object.keys(channels).length} channels`);
+  // saveChannels.then(savePlayers).then(callback(error);)
   DB.saveChannels(channels);
   var $players = Object.keys(players);
   var finishedWithoutError = true;
@@ -446,6 +447,7 @@ IdleRPG.prototype.save = function(callback) {
       });
     } else callback(finishedWithoutError);
   })();*/
+  callback(true);
 };
 
 IdleRPG.prototype.saveConfig = function() {

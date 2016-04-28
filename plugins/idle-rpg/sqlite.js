@@ -106,7 +106,7 @@ function setupDatabase(error) {
 }
 
 function setupChannels(callback) {
-  db.run("CREATE TABLE IF NOT EXISTS channels (channel TEXT, options TEXT)", function (error) {
+  db.run("CREATE TABLE IF NOT EXISTS channels (channel TEXT UNIQUE, options TEXT)", function (error) {
     if (error) return GLOBAL.logger.error(error);
     if (typeof callback === "function") callback();
   });
