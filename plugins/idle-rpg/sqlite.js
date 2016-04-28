@@ -4,7 +4,6 @@ const SELECT_PLAYER = "SELECT name, pass, class as $class, online, level, next, 
 
 // Export the database itself
 var db = new sqlite.Database(require('path').resolve(__dirname, '.database'), setupDatabase);
-
 module.exports = db;
 module.exports.getOnlinePlayers = function (callback) {
   if (typeof callback !== "function") return; // This isn't valid, don't process

@@ -2,12 +2,9 @@
 // Imports
 const MessageHandlerPlugin = require('../../lib/MessageHandlerPlugin');
 const DB = require("./sqlite");
+const $s = require("./simple-seconds");
 
 // *** Helper functions
-// Normalize time into seconds
-function time() {
-  return Math.floor(Date.now() / 1000); // Make sure to return an integer
-};
 // Check if `text` is a channel
 function isChannel(text) {
   return /^[#&+!][^\x07\x2C\s]{0,50}$/.test(text);
@@ -111,13 +108,13 @@ class IdleRPG extends MessageHandlerPlugin {
     AKP48.on("serverConnect", function(id, instance) {
       // Delayed first-time-setup
       if (self._ltime === 1) {
-        self._ltime = time();
+        self._ltime = $s.time();
         // Load channels when we get a server instance
         DB.loadChannels(function (data) {
           if (data.error) return error(`Error loading channel data: ${data.error}`);
           else debug(`Loading channels: ${data.rows.length}`);
           data.rows.forEach(function (row) {
-            debug(`Loading channel: ${JSON.stringify(row)}`);
+            debug(`Loading channel: ${row.channel}`);
             var options = self.getChannelOptions(row.channel);
             Object.keys(row.options).forEach(function(o) {
               if (options.hasOwnProperty(o)) options[o] = row.options[o] ? true : false; // Force boolean
@@ -290,11 +287,14 @@ IdleRPG.prototype.unload = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
     self.save(function (saved) {
-      if(true) { // For now, always save
-        resolve(true);
-      } else {
-        reject(`Database Error: ${saved}`);
-      }
+      // Close the database, then resolve
+      DB.close(function (error) {
+        if(true) { // For now, always save
+          resolve(true);
+        } else {
+          reject(`Database Error: ${saved}`);
+        }
+      });
     });
   });
 };
@@ -329,16 +329,15 @@ IdleRPG.prototype.processContext = function(context) {
 
 // Return human readable time
 IdleRPG.prototype.duration = function(time) {
-  if (/^\d+$/.test(time)) {
+  if (!/^\d+$/.test(time)) {
     return `NaN (${time})`;
-  } else {
-    var days = Math.floor(time/86400),
-      day = days == 1 ? "day" : "days",
-      hours = pad(Math.floor(time%86400/3600), 2, "0"),
-      minutes = pad(Math.floor(time%3600/60), 2, "0"),
-      seconds = pad(Math.floor(time%60), 2, "0");
-    return `${days} ${day}, ${hours}:${minutes}:${seconds}`;
   }
+  var days = Math.floor(time/$s.oneDay),
+    day = days == 1 ? "day" : "days",
+    hours = pad(Math.floor(time%$s.oneDay/$s.oneHour), 2, "0"),
+    minutes = pad(Math.floor(time%$s.oneHour/$s.oneMinute), 2, "0"),
+    seconds = pad(Math.floor(time%$s.oneMinute), 2, "0");
+  return `${days} ${day}, ${hours}:${minutes}:${seconds}`;
 };
 
 IdleRPG.prototype.update = function() {
@@ -350,11 +349,11 @@ IdleRPG.prototype.update = function() {
   var self = this;
   // We haven't joined any channels
   if (self._ltime === 1) return;
-  var nTime = time();
+  var nTime = $s.time();
   var uTime = nTime - self._ltime;
   var msgs = [];
   // Report the top (3) players every 10 hours
-  if (self._utime % 36000 === 0) {
+  if (self._utime % $s.inHours(10) === 0) {
     self.getTopPlayers(function (players) {
       msgs.push("Top Players:");
       var i = 0;
@@ -429,7 +428,7 @@ IdleRPG.prototype.save = function(callback) {
   debug("Saving config");
   this.saveConfig();
   debug(`Saving ${Object.keys(channels).length} channels`);
-  // saveChannels.then(savePlayers).then(callback(error);)
+  // saveChannels.then(savePlayers.then(callback(error);));
   DB.saveChannels(channels);
   var $players = Object.keys(players);
   var finishedWithoutError = true;
@@ -455,12 +454,21 @@ IdleRPG.prototype.saveConfig = function() {
 };
 
 IdleRPG.prototype.getTopPlayers = function(count, callback) {
+  if (typeof count === "function") {
+    callback = count;
+    count = null;
+  }
   if (typeof callback !== "function") return;
-  this.save(); // Save current data
-  DB.getTopPlayers(count, function (data) {
-    if (data.error) return error(data.error);
-    callback(makePlayersFromData(data.rows));
+  // Save current player data
+  this.save(function (saved) {
+    // After saving get the top players
+    DB.getTopPlayers(count, function (data) {
+      if (data.error) return error(data.error);
+      // If there's no error, let's callback to home with the top players :D
+      callback(makePlayersFromData(data.rows));
+    });
   });
+  
 };
 
 function makePlayersFromData(data) {
@@ -476,107 +484,5 @@ function random(low, high) {
   }
   return Math.floor(Math.random() * (high - low) + low);
 }
-
-// TODO: Update data to DB on change
-/*function IdleUser(name, pass, $class) { // player name, password, class
-  var online = false; // Is the user online?
-  var level, next, idled; // Current level, time until next level, total time idled
-  var penalties = 0;
-  var lastLogin; // last login time
-  var isAdmin = false; // Is admin?
-  var items = {}; // Current equipment
-  for (var type in item_types) {
-    items[type] = 0;
-  }
-  
-  function update(time) {
-    // Is owner online and idling?
-    if (!online) return false;
-    next -= time;
-    idled += time;
-    if (next <= 0) {
-      level++;
-      next += Math.round(config.base * (config.step ^ level));
-      return true;
-    }
-    return false;
-  }
-  
-  function isAdmin() {
-    return isAdmin;
-  }
-  
-  function setAdmin(value) {
-    // Force true/false
-    isAdmin = value ? true : false;
-  }
-  
-  function isOnline() {
-    return online;
-  }
-  
-  function getName() {
-    return name;
-  }
-  
-  function getClass() {
-    return $class;
-  }
-  
-  function getItemCount() {
-    var count = 0;
-    Object.keys(items).forEach(key => count += items[key]);
-    return count;
-  }
-  
-  function isPassword(password) {
-    return password === pass;
-  }
-  
-  // Mark as online
-  function login(userhost) {
-    // Already online?
-    if (online) {
-      return false;
-    }
-    online = true;
-    lastLogin = time;
-    return true;
-  }
-  
-  function logout() {
-    online = false;
-  }
-  
-  // Penalize a user for X base * variable amount
-  function penalize(time) {
-    time *= (config.pStep ^ level);
-    var limit = config.penaltyLimit;
-    if (limit) time = Math.min(time, limit);
-    next += time;
-    penalties += time;
-    return time;
-  }
-  
-  function load(data) {
-    // TODO
-  }
-  
-  function save() {
-    return {
-      $name: name,
-      $pass: pass,
-      $class: $class,
-      $online: online,
-      $level: level,
-      $next: next,
-      $idled: idled,
-      $penalties: penalties,
-      $lastLogin: lastLogin,
-      $isAdmin: isAdmin,
-      $items: JSON.stringify(items)
-    };
-  }
-}*/
 
 module.exports = IdleRPG;
